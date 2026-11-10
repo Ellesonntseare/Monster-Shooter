@@ -1,0 +1,75 @@
+// Shared gameplay: the room host simulates the world; the Node server relays
+// validated messages. Every client owns its local movement, camera and inventory.
+const remoteAvatars=new Map(),remoteHeld=new Map();let pendingSnapshot=null;
+function combatPlayers(){
+  const players=[{id:null,pos:P.pos,dead:P.dead,hp:P.hp}];
+  if(network.role==='host')for(const p of network.players.values())if(p.id!==network.id&&p.position?.active)players.push({id:p.id,pos:new THREE.Vector3(...p.position.pos),dead:p.position.hp<=0,hp:p.position.hp});
+  return players;
+}
+function closestPlayer(m){const living=combatPlayers().filter(p=>!p.dead);return living.sort((a,b)=>Math.hypot(a.pos.x-m.x,a.pos.z-m.z)-Math.hypot(b.pos.x-m.x,b.pos.z-m.z))[0]||{id:null,pos:P.pos,dead:true};}
+function hurtTarget(player,damage){if(player.id)network.direct(player.id,'hurt',{damage});else hurtPlayer(damage);}
+function updateRemotePlayers(dt){
+  for(const [id,entry] of remoteAvatars)if(!network.players.has(id)){entry.avatar?.root.removeFromParent();remoteAvatars.delete(id);}
+  for(const p of network.players.values()){
+    if(p.id===network.id||!p.position?.active)continue;
+    let entry=remoteAvatars.get(p.id);
+    if(!entry){entry={loading:true,avatar:null};remoteAvatars.set(p.id,entry);buildHero(p.hero).then(avatar=>{if(!remoteAvatars.has(p.id))return;entry.avatar=avatar;entry.loading=false;avatar.root.position.fromArray(p.position.pos);}).catch(e=>{console.warn('Co-op avatar',e.message);entry.loading=false;});}
+    if(!entry.avatar)continue;
+    const avatar=entry.avatar; if(avatar.root.parent!==state.world)state.world.add(avatar.root);
+    avatar.root.visible=p.position.hp>0;avatar.root.position.lerp(new THREE.Vector3(...p.position.pos),1-Math.exp(-dt*14));avatar.root.rotation.y=angleLerp(avatar.root.rotation.y,p.position.yaw+Math.PI,Math.min(1,dt*14));avatar.update(dt,p.position.moving);
+  }
+}
+function updateGuestMonsters(dt){for(const m of state.monsters){m.flash=Math.max(0,m.flash-dt);m.group.position.lerp(new THREE.Vector3(m.x,m.y||0,m.z),1-Math.exp(-dt*14));m.group.rotation.y=angleLerp(m.group.rotation.y,m.netRotation||0,Math.min(1,dt*14));if(m.dead){m.deadT+=dt;m.group.rotation.x=-Math.min(1,m.deadT/.5)*Math.PI/2;}animateMonster(m,dt);}}
+function coopSnapshot(){return {mapKey:state.mapKey,wave:state.wave,toSpawn:state.toSpawn,bossQueued:state.bossQueued,paused:state.paused,shop:state.shopOpen,won:state.mode==='over'&&P.won,
+  monsters:state.monsters.map(m=>({id:m.id,type:m.type,x:m.x,y:m.y||0,z:m.z,hp:m.hp,maxhp:m.maxhp,rotation:m.group.rotation.y,dead:m.dead,moving:m.moving,flash:m.flash,shootAnim:m.shootAnim,windup:m.windup})),
+  barrels:state.barrels.map(b=>({id:b.netId,x:b.x,y:b.y,z:b.z,hp:b.hp,alive:b.alive})),operation:operations.snapshot()};}
+function applyCoopSnapshot(s){
+  if(network.role!=='guest')return;
+  if(state.mode!=='playing'||s.mapKey!==state.mapKey){pendingSnapshot=s;return;}
+  state.wave=s.wave;state.toSpawn=s.toSpawn;state.bossQueued=s.bossQueued;state.hostPaused=s.paused;
+  const ids=new Set(s.monsters.map(m=>m.id));
+  for(const m of [...state.monsters])if(!ids.has(m.id)){m.group.removeFromParent();if(m.aim)m.aim.removeFromParent();state.monsters.splice(state.monsters.indexOf(m),1);}
+  for(const data of s.monsters){if(!MONSTER_TYPES[data.type])continue;let m=state.monsters.find(m=>m.id===data.id);if(!m){m=spawnMonster(data.type,data.x,data.z);m.id=data.id;m.group.position.set(data.x,data.y,data.z);}
+    Object.assign(m,{x:data.x,y:data.y,z:data.z,hp:data.hp,maxhp:data.maxhp,moving:data.moving,netRotation:data.rotation,shootAnim:data.shootAnim,windup:data.windup});m.flash=Math.max(m.flash,data.flash||0);if(data.dead&&!m.dead){m.dead=true;m.deadT=0;sfx.kill();}if(m.aim)m.aim.visible=false;
+  }
+  if(!state.sharedBarrelsInitialized){for(const b of state.barrels)b.mesh.removeFromParent();state.barrels=[];for(const b of s.barrels){spawnBarrel(b.x,b.z,b.y);state.barrels.at(-1).netId=b.id;}state.sharedBarrelsInitialized=true;}
+  for(const data of s.barrels){const b=state.barrels.find(b=>b.netId===data.id);if(!b)continue;b.hp=data.hp;b.alive=data.alive;if(!b.alive)b.mesh.removeFromParent();}
+  operations.apply(s.operation);
+  if(s.shop&&state.lastSharedShop!==s.wave){state.lastSharedShop=s.wave;openShop();$('shopnext').textContent='READY / WAIT FOR HOST';}
+  if(!s.shop&&state.shopOpen){$('shop').classList.add('hidden');state.shopOpen=false;state.paused=false;lock();}
+  if(s.won&&state.mode==='playing')endMatch(true);
+}
+function coopAction(id,a){
+  if(network.role!=='host'||state.mode!=='playing')return;
+  const player=network.players.get(id)?.position;if(!player?.active||player.hp<=0)return;
+  const pos=new THREE.Vector3(...player.pos);
+  if(a.kind==='interact'){remoteHeld.set(id,!!a.held);return;}
+  if(a.kind==='pickup'){operations.claim(a.id,id,pos);return;}
+  if(a.kind==='shot'&&Array.isArray(a.end)){const from=new THREE.Vector3(...a.pos),end=new THREE.Vector3(...a.end);if(from.distanceTo(pos)<8&&from.distanceTo(end)<300){addTracer(from,end);network.effect({kind:'shot',pos:a.pos,end:a.end,owner:id});}return;}
+  const before={score:state.score,credits:state.credits,kills:state.kills};
+  if(a.kind==='hit'){const m=state.monsters.find(m=>m.id===a.id&&!m.dead);if(m&&Math.hypot(m.x-pos.x,m.z-pos.z)<270)damageMonster(m,a.damage,new THREE.Vector3(...a.pos),!!a.gib,!!a.head);}
+  if(a.kind==='barrel'){const b=state.barrels.find(b=>b.netId===a.id&&b.alive);if(b&&Math.hypot(b.x-pos.x,b.z-pos.z)<270)damageBarrel(b,a.damage,new THREE.Vector3(...a.pos));}
+  if(a.kind==='explosion'&&pos.distanceTo(new THREE.Vector3(...a.pos))<100)explode(new THREE.Vector3(...a.pos),CFG.c4.radius,CFG.c4.dmg);
+  const points=state.score-before.score,credits=state.credits-before.credits,kills=state.kills-before.kills;
+  state.score=before.score;state.credits=before.credits;state.kills=before.kills;
+  if(points||credits||kills)network.direct(id,'reward',{points,credits,kills});
+}
+const network=createNetwork({
+  onRoom:({role})=>{state.coop=role;},
+  onStart:setup=>{pendingSnapshot=null;state.hostPaused=false;state.sharedBarrelsInitialized=false;state.lastSharedShop=0;startGame(setup.mapKey,setup);},
+  onSnapshot:applyCoopSnapshot,
+  onAction:coopAction,
+  onDirect:(type,data)=>{
+    if(type==='hurt'&&state.mode==='playing')hurtPlayer(data.damage);
+    if(type==='reward'){state.score+=data.points||0;state.credits+=data.credits??data.points??0;state.kills+=data.kills||0;}
+    if(type==='pickup'){operations.grant(data.kind);banner(data.kind==='med'?'MEDKIT +55':'PICKUP · '+data.kind.toUpperCase());}
+    if(type==='sector'){state.score+=data.credits;state.credits+=data.credits;P.hp=Math.min(P.maxHp,P.hp+data.heal);P.c4=Math.min(4+up.c4,P.c4+1);giveAmmo();}
+  },
+  onEffect:e=>{
+    if(state.mode!=='playing')return;
+    if(e.kind==='shot'&&e.owner!==network.id)addTracer(new THREE.Vector3(...e.pos),new THREE.Vector3(...e.end));
+    if(e.kind==='explosion')explode(new THREE.Vector3(...e.pos),e.radius,0);
+    if(e.kind==='bullets'){const from=new THREE.Vector3(...e.from),base=new THREE.Vector3(...e.dir);for(let i=0;i<e.count;i++){const dir=base.clone().applyAxisAngle(UP,(i-(e.count-1)/2)*e.spread),material=projMats[e.col]||(projMats[e.col]=new THREE.MeshBasicMaterial({color:e.col,fog:false})),mesh=new THREE.Mesh(projGeo,material);mesh.position.copy(from);mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),dir);state.world.add(mesh);state.projs.push({mesh,v:dir.multiplyScalar(e.speed),life:3,dmg:0});}}
+  },
+  onDisconnect:()=>{state.hostPaused=false;for(const e of remoteAvatars.values())e.avatar?.root.removeFromParent();remoteAvatars.clear();if(state.mode==='playing'){showPause();banner('CO-OP CONNECTION CLOSED');}},
+});

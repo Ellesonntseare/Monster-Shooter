@@ -1,0 +1,10 @@
+const fs=require('fs');let s=fs.readFileSync('public/js/hero.js','utf8');
+s=s.replace('color:0x744a34','color:0x65402c');
+s=s.replace("(z>.035 && y>1.575 ? front:back).push(...ids);", "if(y<1.595)continue;(z>.02 ? front:back).push(...ids);");
+s=s.replace("new THREE.SphereGeometry(1,40,24,0,Math.PI*2,0,1.23)","new THREE.SphereGeometry(1,40,24,0,Math.PI*2,0,1.2)");
+s=s.replace("scalp.position.set(0,.053,-.01);scalp.scale.set(.099,.1,.104)","scalp.position.set(0,.045,-.022);scalp.scale.set(.079,.093,.092)");
+s=s.replace("new THREE.SphereGeometry(.003,5,4)","new THREE.SphereGeometry(.0016,5,4)");
+s=s.replace("Math.cos(1.23)","Math.cos(1.2)");
+s=s.replace("dummy.position.set(.1*Math.sin(phi)*Math.cos(theta),.053+.101*Math.cos(phi),-.01+.105*Math.sin(phi)*Math.sin(theta))", "dummy.position.set(.08*Math.sin(phi)*Math.cos(theta),.045+.094*Math.cos(phi),-.022+.093*Math.sin(phi)*Math.sin(theta))");
+s=s.replace("root.add(head);head.position.set", "const neck=new THREE.Mesh(new THREE.CylinderGeometry(.046,.066,.13,24),skinMaterial);neck.position.set(0,-.122,-.018);head.add(neck);\n    root.add(head);head.position.set");
+fs.writeFileSync('public/js/hero.js',s);

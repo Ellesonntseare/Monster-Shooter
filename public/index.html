@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RIFTWATCH</title>
+<script>try { const p=new URLSearchParams(location.search);if (!sessionStorage.getItem('riftwatch-ready') && !p.has('deploy')) location.replace('/hero.html'+(p.get('room')?'?room='+encodeURIComponent(p.get('room')):'')); } catch {}</script>
+<link rel="stylesheet" href="/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "/vendor/three/build/three.module.js",
+  "three/addons/": "/vendor/three/examples/jsm/",
+  "three-mesh-bvh": "/vendor/three-mesh-bvh/build/index.module.js" } }
+</script>
+</head>
+<body>
+<div id="hud" class="hidden">
+  <div id="top"><span id="wave">LEVEL 1</span><span id="score">0</span><span id="credits">$0</span><span id="left">0 LEFT</span></div>
+  <canvas id="mini" width="160" height="160"></canvas>
+  <div id="compass"></div><div id="objective"><span class="eyebrow">ACTIVE OPERATION</span><h3 id="objective-title">RECOVER THE DATA</h3><p id="objective-detail"></p><div class="objective-track"><div id="objective-progress"></div></div></div><div id="interact"></div><div id="buffs"></div><div id="waypoint"></div><div id="cross"></div>
+  <div id="hit"></div>
+  <div id="camera-label"></div><div id="protection"></div>
+  <div id="coop-hud"></div>
+  <div id="voice-hud"></div><div id="voice-speaking"></div>
+  <div id="hpbox"><div id="hpfill"></div><span id="hptext">100</span></div>
+  <div id="ammobox"><div id="wname"></div><div id="ammo">30 / 120</div><div id="c4txt"></div></div>
+  <div id="banner"></div>
+  <div id="hurt"></div>
+  <div id="bossbar" class="hidden"><div id="bossname"></div><div id="bossbg"><div id="bossfill"></div></div></div>
+  <div id="floaters"></div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="menu-brand"><span class="eyebrow">HERO DIVISION / FIELD OPERATIONS</span><h1>RIFT<span>WATCH</span><i>01</i></h1><p class="intro">The world broke open.<br><strong>Go take it back.</strong></p><p class="brief">Recover the data. Hold the sector. Make it out alive.</p></div>
+  <p id="loadtxt">Loading models 0/9</p><a class="hero-link" href="/hero.html">YOUR HERO ↗ <span>Inspect & equip your personal skin</span></a>
+  <div class="deployment-label">CHOOSE YOUR OPERATION <span>06 LOCATIONS / SOLO PVE</span></div><div id="modes"><button class="modebtn sel" data-mode="campaign">CAMPAIGN<small>10 sectors + extraction</small></button><button class="modebtn" data-mode="endless">ENDLESS<small>unlimited deployments</small></button></div>
+  <div class="play-options"><span>CAMERA</span><button class="povbtn sel" data-pov="shoulder">THIRD PERSON</button><button class="povbtn" data-pov="wide">WIDE VIEW</button><button class="povbtn" data-pov="first">FIRST PERSON</button><span>DIFFICULTY</span><button class="difficultybtn sel" data-difficulty="relaxed">RELAXED</button><button class="difficultybtn" data-difficulty="standard">STANDARD</button></div>
+  <div id="lobby"><div class="lobby-heading">ONLINE CO-OP <span id="room-code"></span></div><div class="lobby-controls"><input id="player-name" aria-label="Player name" maxlength="24" placeholder="Your name"><button id="create-room">CREATE ROOM</button><input id="join-code" aria-label="Room code" maxlength="6" placeholder="ROOM CODE"><button id="join-room">JOIN ROOM</button><button id="leave-room" class="hidden">LEAVE ROOM</button></div><p id="lobby-status">Play solo, or create a room and invite up to three friends.</p><p id="lobby-players"></p></div>
+  <div id="maps"></div>
+  <p class="keys">WASD / arrows move &middot; Move mouse to look &middot; Shift sprint &middot; Space jump &middot; LMB fire &middot; RMB / C aim &middot; R reload &middot; 1/2/wheel switch gun &middot; G throw C4 &middot; F detonate<br>E hold to recover / extract · E open mystery cache · V switch POV · M mute · Walk over green-cross medkits to heal</p>
+</div>
+
+<div id="music-controls"><label for="music-volume">MUSIC <span id="music-level">9%</span></label><input id="music-volume" type="range" min="0" max="30" value="9" aria-label="Music volume"></div><div id="voice-controls"><button id="voice-toggle">ENABLE VOICE</button><button id="voice-mute" class="hidden">MUTE MIC</button><span id="voice-status">VOICE OFF</span></div><div id="voice-audio" class="hidden"></div>
+<div id="shop" class="overlay hidden">
+  <h2 id="shoptitle">UPGRADES</h2>
+  <div id="shopcr"></div>
+  <div id="shopgrid"></div>
+  <button id="shopnext">NEXT LEVEL &#9654;</button>
+</div>
+
+<div id="pause" class="overlay hidden"><h2>PAUSED</h2><p>Click to resume your operation</p><p class="keys">WASD / arrows move · Move mouse to look · E interact · V switch POV</p><button id="windowed">RESUME WITH MOUSE LOOK</button><p class="keys">Move the mouse to turn the camera. Left click fires. Right click or C aims. Esc pauses.</p></div>
+
+<div id="over" class="overlay hidden">
+  <h1 id="overtitle">YOU DIED</h1>
+  <p id="overstats"></p>
+  <button id="restart">PLAY AGAIN</button>
+  <button id="tomenu">MENU</button>
+</div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
+
